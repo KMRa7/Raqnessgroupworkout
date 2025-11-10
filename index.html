@@ -31,6 +31,24 @@
     .note{margin-top:10px;font-size:12px;color:#666;line-height:1.6}
     .submit{width:100%;padding:14px;border:none;border-radius:10px;background:#dc3545;color:#fff;font-size:18px;font-weight:700;cursor:pointer}
     .submit:active{transform:scale(.99)}
+
+    /* 候補チップ */
+    .slots-panel{margin:8px 0 12px;border:1px solid #e7f6ec;background:#f7fffa;border-radius:10px;padding:10px}
+    .slots-title{font-size:12px;color:#0f5132;margin:0 0 6px;font-weight:700}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  border:1px solid #b7e4c7;
+  background:#fff;
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:13px;
+  line-height:1;
+  /* ここを変更 */
+  cursor:default;
+  pointer-events:none; /* ← クリック無効化 */
+}
+    .chip.active{background:#d1f2df;border-color:#88d4ad}
+    .chip:active{transform:scale(.98)}
   </style>
 </head>
 <body>
@@ -58,7 +76,30 @@
       <option>非会員</option>
     </select>
 
-    <!-- ④ 希望日時（第1〜第3：すべて必須） -->
+    <!-- ③.5 メニュー名（必須） -->
+    <div class="label">メニュー名をお選びください <span class="required">必須</span></div>
+    <select id="menuName" aria-label="メニュー名">
+      <option value="" disabled selected>選択してください</option>
+      <option>ピラティス</option>
+      <option>コーディネーション</option>
+      <option>チューニング</option>
+      <option>脂肪燃焼</option>
+      <option>ストレッチ</option>
+      <option>ルーシーダットン</option>
+      <option>コア</option>
+      <option>ナイトコア</option>
+      <option>ゆっくりヨガ</option>
+      <option>ヨガ</option>
+    </select>
+
+    <!-- メニューの候補表示（参考用） -->
+    <div id="slotsPanel" class="slots-panel" style="display:none;">
+      <p class="slots-title">このメニューで予約できる候補</p>
+      <div class="chips" id="chipsHolder"></div>
+      <p class="note">※候補は参考用です。下の「希望日時（第1〜第3）」はこれまで通り、カレンダーで具体の日付と時刻を選択してください。</p>
+    </div>
+
+    <!-- ④ 希望日時（第1〜第3：そのまま） -->
     <div class="label">希望日時（第1〜第3） <span class="required">必須</span></div>
 
     <div class="dt-group">
@@ -86,31 +127,79 @@
   <script>
     const LIFF_ID = "2008384607-MY53PJ6A";
 
-    // 入力保存（name/phone/memberStatus/note）
+    /* ========== スケジュール定義（メニュー→曜日→時間帯） ========== */
+    const MENU_SCHEDULE = {
+      'ピラティス':       { '月': ['10:00-10:50'], '金': ['10:00-10:50'] },
+      'コーディネーション': { '火': ['10:00-10:50'], '木': ['16:00-16:50'], '金': ['19:30-20:20'] },
+      'チューニング':     { '水': ['10:00-10:50'], '金': ['16:00-16:50'] },
+      '脂肪燃焼':        { '木': ['10:00-10:50'], '火': ['16:00-16:50'], '土': ['16:00-16:50（第2・第4）'] },
+      'ストレッチ':       { '土': ['10:00-10:50','16:00-16:50（第1・第3・第5）'], '月': ['16:00-16:50'], '木': ['19:30-20:20'] },
+      'ルーシーダットン':  { '土': ['11:00-11:50'] },
+      'コア':            { '水': ['16:00-16:50'] },
+      'ナイトコア':       { '火': ['19:30-20:20'] },
+      'ゆっくりヨガ':      { '水': ['19:30-20:20'] },
+      'ヨガ':            { '土': ['17:00-17:50（第2・第4のみ）'] },
+    };
+
+    /* ========== 入力保存（name/phone/memberStatus/note/menuName） ========== */
     function saveInput(id){ localStorage.setItem(id, document.getElementById(id).value); }
-    ["name","phone","memberStatus","note"].forEach(id=>{
+    ["name","phone","memberStatus","note","menuName"].forEach(id=>{
       document.addEventListener("input",(e)=>{ if(e.target && e.target.id===id) saveInput(id); });
-      if(document.getElementById(id) && document.getElementById(id).tagName==="SELECT"){
-        document.getElementById(id).addEventListener("change", ()=>saveInput(id));
-      }
+      const el = document.getElementById(id);
+      if(el && el.tagName==="SELECT"){ el.addEventListener("change", ()=>saveInput(id)); }
     });
 
+    /* ========== 候補描画 ========== */
+    function renderSlots(menu){
+  const panel = document.getElementById('slotsPanel');
+  const holder = document.getElementById('chipsHolder');
+  holder.innerHTML = '';
+  if(!menu || !MENU_SCHEDULE[menu]){ panel.style.display='none'; return; }
+
+  const order = ['月','火','水','木','金','土','日'];
+  const entries = Object.entries(MENU_SCHEDULE[menu]).sort(
+    (a,b)=> order.indexOf(a[0]) - order.indexOf(b[0])
+  );
+
+  entries.forEach(([day, times])=>{
+    times.forEach(t=>{
+      // button → span、クリック処理なし
+      const chip = document.createElement('span');
+      chip.className='chip';
+      chip.textContent = `${day} ${t}`;
+      holder.appendChild(chip);
+    });
+  });
+
+  panel.style.display='block';
+}
+
+    /* ========== 初期化 ========== */
     document.addEventListener("DOMContentLoaded", async () => {
       try { await liff.init({ liffId: LIFF_ID }); }
       catch (e) { console.error("LIFF初期化に失敗:", e); }
 
       // 前回値の復元
-      ["name","phone","memberStatus","note"].forEach(id=>{
+      ["name","phone","memberStatus","note","menuName"].forEach(id=>{
         const v = localStorage.getItem(id);
         if(v) document.getElementById(id).value = v;
       });
 
-      // 過去日時を選べないように min を設定（端末ローカル時刻）
+      // 過去日時の選択防止（端末ローカル時刻基準）
       const toLocal = (d)=>{ const z=d.getTimezoneOffset(); const l=new Date(d.getTime()-z*60000); return l.toISOString().slice(0,16); };
       const nowLocal = toLocal(new Date());
       ["date1","date2","date3"].forEach(id => { const el=document.getElementById(id); if(el) el.min = nowLocal; });
+
+      // メニュー候補の初回描画
+      renderSlots(document.getElementById('menuName').value);
+
+      // メニュー変更時に候補を更新
+      document.getElementById('menuName').addEventListener('change', (e)=>{
+        renderSlots(e.target.value);
+      });
     });
 
+    /* ========== 送信処理 ========== */
     function formatJP(datetime){
       if(!datetime) return "";
       const d = new Date(datetime);
@@ -120,6 +209,7 @@
       const day = String(d.getDate()).padStart(2,"0");
       const hh = String(d.getHours()).padStart(2,"0");
       const mm = String(d.getMinutes()).padStart(2,"0");
+      // 曜日を付けたい場合はここで算出してもOK
       return `${y}年${m}月${day}日 ${hh}:${mm}`;
     }
 
@@ -127,16 +217,21 @@
       const name    = document.getElementById("name").value.trim();
       const phone   = document.getElementById("phone").value.trim();
       const status  = document.getElementById("memberStatus").value;
+      const menu    = document.getElementById("menuName").value;
+
       const date1   = document.getElementById("date1").value;
       const date2   = document.getElementById("date2").value;
       const date3   = document.getElementById("date3").value;
       const note    = document.getElementById("note").value.trim();
 
-      // 必須チェック：①②③④(第1〜第3)
+      // 必須チェック
       if(!name){ alert("お名前をご入力ください。"); return; }
       if(!phone){ alert("電話番号をご入力ください。"); return; }
       if(!status){ alert("会員・非会員を選択してください。"); return; }
+      if(!menu){ alert("メニュー名を選択してください。"); return; }
       if(!date1 || !date2 || !date3){ alert("希望日時は第1〜第3までご入力ください。"); return; }
+
+      const selectedChips = Array.from(document.querySelectorAll('.chip.active')).map(c=>c.textContent).join('、');
 
       const message =
 `【グループワークアウト予約】
@@ -145,6 +240,9 @@
 電話番号：${phone}
 
 会員ステータス：${status}
+メニュー名：${menu}
+
+候補メモ：${selectedChips || "（未選択）"}
 
 【希望日時】
 ・第1希望：${formatJP(date1)}
